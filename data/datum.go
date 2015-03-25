@@ -36,18 +36,13 @@ func parseDate(date string) (time.Time, error) {
 	return time.Time{}, errors.New("Invalid date")
 }
 
-type Getter interface {
-	Get(key string) (interface{}, error)
-}
-
 type Datum struct {
-	Source Getter
+	Source interface{}
 }
 
-type GettableMap map[string]interface{}
-
-func (g GettableMap) Get(key string) (interface{}, error) {
-	return dotaccess.Get(g, key)
+// A getter is any type that can Get a key, with a default value and return a string
+type Getter interface {
+	Get(key string, defaultValue interface{}) string
 }
 
 type ConditionOperator func(args []interface{}) bool
@@ -347,7 +342,7 @@ func (d *Datum) getParsedVal(key string) string {
 		k := strings.TrimPrefix(m, "$")
 
 		// Ignore error because if it's an error we'll just use ""
-		v, _ := d.Source.Get(k)
+		v, _ := dotaccess.Get(d.Source, k)
 
 		if v == nil {
 			v = ""

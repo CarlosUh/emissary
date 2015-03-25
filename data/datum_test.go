@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var dm = GettableMap{
+var dm = map[string]interface{}{
 	"a": 10,
 	"b": map[string]interface{}{
 		"c": 2.5,
