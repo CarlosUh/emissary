@@ -1,6 +1,6 @@
 package data
 
 type DataSource interface {
-	Next() (DataMap, error)
+	Next() (*Datum, error)
 	HasNext() bool
 }
