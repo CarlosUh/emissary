@@ -18,6 +18,7 @@ var dm = map[string]interface{}{
 		"g": "boop",
 	},
 	"h": time.Now(),
+	"i": "Numeric String 2",
 }
 
 var datum = &Datum{dm}
@@ -48,6 +49,7 @@ var assertions = []a{
 	a{"$h|date|2006", now.Format("2006")},
 	a{"$h|date", now.Format("02/01/2006")},
 	a{"a|date", "Invalid Date"},
+	a{"$i", "Numeric String 2"},
 }
 
 type c struct {

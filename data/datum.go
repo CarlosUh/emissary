@@ -15,6 +15,7 @@ var dynamicValue = regexp.MustCompile("\\$([A-Za-z0-9_\\.]+)")
 var compoundDef = regexp.MustCompile("\\{([^}]+)\\}")
 var conditionBlock = regexp.MustCompile("\\[if(.)+\\[/if\\]")
 var conditionPattern = regexp.MustCompile("\\[[^\\]]+\\]")
+var mathable = regexp.MustCompile("^[0-9\\.\\+\\-\\*/\\s\\(\\)]+$")
 
 var DefaultDecimalCount = 8
 
@@ -359,14 +360,18 @@ func (d *Datum) getParsedVal(key string) string {
 		val = strings.Replace(val, m, parsedStr, 1)
 	}
 
-	// Compile. The Eval will fail if it's not all math-able. BUT, only if it's not a date
+	// Compile. The Eval will fail if it's not all math-able. BUT, only if it's not a date AND is "mathable"
 	_, err = parseDate(val)
 	if err != nil {
-		res, err := evaler.Eval(val)
-		if err == nil {
-			// Formatting will be applied later - get it as big as needed
-			val = res.FloatString(DefaultDecimalCount)
+		matched := mathable.MatchString(val)
+		if matched {
+			res, err := evaler.Eval(val)
+			if err == nil {
+				// Formatting will be applied later - get it as big as needed
+				val = res.FloatString(DefaultDecimalCount)
+			}
 		}
+
 	}
 
 	// Now format
