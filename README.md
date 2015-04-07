@@ -6,7 +6,7 @@ Emissary is not a standalone application. Rather, it should be part of a larger 
 
 # Core Concepts
 ## The "Emissary"
-A single Emissary (`*emissary.Emissary`) consists of configurations and modules that are used for file generation, security, and delivery. It has but two methods: `Run() error` will generate, format/secure/handle, and deliver the file. `ShouldRun(time.Time) (bool, error)` parses the emissary's `Schedules` (cron syntax) to decide if it should be run at the provided time.
+A single Emissary (`*emissary.Emissary`) consists of configurations and modules that are used for file generation, middleware (handling, formatting, security, etc), and delivery. It has but two methods: `Run() error` will generate the data using the generator, pass the data through any middleware modules, and deliver the data using the delivery module. `ShouldRun(time.Time) (bool, error)` parses the emissary's `Schedules` (cron syntax) to decide if it should be run at the provided time.
 
 ## Generator
 A generator is any type that implements the `generator.FileGenerator` interface, which has one method: `Generate(io.Writer) error`. Any generator can make use of Emissary's `DataSource` to retrieve individual `DataMap`s, which implement a highly flexible syntax for data retrieval from arbitrary `map[string]interface{}`s. (see below)
