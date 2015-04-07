@@ -120,6 +120,8 @@ func (s *SFTP) getSSHClient() (*ssh.Client, error) {
 		conf.Auth = []ssh.AuthMethod{
 			ssh.Password(s.Password),
 		}
+	default:
+		return &ssh.Client{}, errors.New("Unknown auth mode")
 	}
 
 	return ssh.Dial("tcp", s.Host, conf)
