@@ -1,72 +1,45 @@
 package emissary
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"errors"
+	"bytes"
 	"github.com/gorhill/cronexpr"
 	"github.com/maxwellhealth/emissary/delivery"
 	"github.com/maxwellhealth/emissary/generator"
-	"github.com/maxwellhealth/emissary/security"
-	"os"
+	"github.com/maxwellhealth/emissary/middleware"
 	"time"
 )
 
 type Emissary struct {
 	Name           string
 	DeliveryModule delivery.Module
-	SecurityModule security.Module
+	Middleware     []middleware.Module
 	FileName       string
 	Schedules      []string
 	Generator      generator.FileGenerator
 }
 
 func (e *Emissary) Run() error {
-	// Get a random identifier for the temporary file
-	buf := make([]byte, 32)
-	i, err := rand.Read(buf)
-	if i != 32 {
-		return errors.New("Failed to generate temporary file")
-	}
-	if err != nil {
-		return err
-	}
-
-	fileName := hex.EncodeToString(buf)
-
-	file, err := os.OpenFile("/tmp/"+fileName, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0660)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		file.Close()
-		os.Remove("/tmp/" + fileName)
-	}()
+	generated := new(bytes.Buffer)
 
 	// Generate the file
-	err = e.Generator.Generate(file)
+	err := e.Generator.Generate(generated)
 	if err != nil {
 		return err
 	}
 
-	// Secure
-	securedFile, err := os.OpenFile("/tmp/"+fileName+"-s", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0660)
-	if err != nil {
-		return err
+	// Middleware?
+	for _, m := range e.Middleware {
+		buf := new(bytes.Buffer)
+		err := m.Passthru(generated, buf)
+		if err != nil {
+			return err
+		}
+
+		generated = buf
+
 	}
 
-	defer func() {
-		securedFile.Close()
-		os.Remove("/tmp/" + fileName + "-s")
-	}()
-
-	err = e.SecurityModule.Secure(file, securedFile)
-	if err != nil {
-		return err
-	}
-
-	err = e.DeliveryModule.Deliver(securedFile)
+	err = e.DeliveryModule.Deliver(generated)
 	if err != nil {
 		return err
 	}

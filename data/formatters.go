@@ -53,6 +53,35 @@ var Formatters = map[string]Formatter{
 		}
 		return "$" + intval + decval, nil
 	},
+	"number": func(input string, arguments []string) (string, error) {
+		if input == "" {
+			input = "0"
+		}
+
+		// Round to decimal places
+		var round int
+		if len(arguments) < 1 {
+			round = 0
+		} else {
+			ival, err := strconv.ParseInt(arguments[0], 10, 64)
+			if err != nil {
+				return input, err
+			}
+
+			round = int(ival)
+		}
+
+		fval, err := strconv.ParseFloat(input, 64)
+		if err != nil {
+			return input, err
+		}
+
+		parsed := Round(fval, .5, round)
+
+		format := fmt.Sprintf("%d", round)
+		return fmt.Sprintf("%."+format+"f", parsed), nil
+
+	},
 	"substring": func(input string, arguments []string) (string, error) {
 		// First arg determines how to parse it
 		if len(arguments) == 0 {

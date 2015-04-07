@@ -43,7 +43,7 @@ type Datum struct {
 
 // A getter is any type that can Get a key, with a default value and return a string
 type Getter interface {
-	Get(key string, defaultValue interface{}) string
+	Get(key string, defaultValue string) string
 }
 
 type ConditionOperator func(args []interface{}) bool
@@ -214,7 +214,7 @@ var ConditionOperators = map[string]ConditionOperator{
 	},
 }
 
-func (d *Datum) Get(key string, defaultValue interface{}) string {
+func (d *Datum) Get(key string, defaultValue string) string {
 	// Check condition blocks first
 	conditions := conditionBlock.FindAllString(key, -1)
 	// var err error
@@ -224,15 +224,22 @@ func (d *Datum) Get(key string, defaultValue interface{}) string {
 	// There may be compound definitions
 	matches := compoundDef.FindAllString(key, -1)
 
+	var retval string
 	if len(matches) > 0 {
 		for _, m := range matches {
 			data := strings.TrimPrefix(strings.TrimSuffix(m, "}"), "{")
 			key = strings.Replace(key, m, d.getParsedVal(data), 1)
 		}
-		return key
+		retval = key
+	} else {
+		retval = d.getParsedVal(key)
 	}
 
-	return d.getParsedVal(key)
+	if retval == "" {
+		return defaultValue
+	} else {
+		return retval
+	}
 }
 
 func (d *Datum) parseCondition(condition string, key string) (string, error) {
