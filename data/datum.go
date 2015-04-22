@@ -1,21 +1,21 @@
 package data
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"github.com/fatih/structs"
 	"github.com/maxwellhealth/go-dotaccess"
+	// "github.com/maxwellhealth/mergo"
+	"github.com/dustin/go-humanize"
 	"github.com/soniah/evaler"
+	"html/template"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
-
-var dynamicValue = regexp.MustCompile("\\$([A-Za-z0-9_\\.]+)")
-var compoundDef = regexp.MustCompile("\\{([^}]+)\\}")
-var conditionBlock = regexp.MustCompile("\\[if(.)+\\[/if\\]")
-var conditionPattern = regexp.MustCompile("\\[[^\\]]+\\]")
-var mathable = regexp.MustCompile("^[0-9\\.\\+\\-\\*/\\s\\(\\)]+$")
 
 var DefaultDecimalCount = 8
 
@@ -26,51 +26,161 @@ var TimeFormats = []string{
 	time.RFC3339Nano,
 }
 
-func parseDate(date string) (time.Time, error) {
-	for _, t := range TimeFormats {
-		parsed, err := time.Parse(t, date)
-		if err == nil {
-			return parsed, nil
-		}
-	}
+func parseFloat(arg interface{}) (float64, error) {
+	switch arg.(type) {
+	case string:
+		return strconv.ParseFloat(arg.(string), 64)
+	case int:
+		f := arg.(int)
+		return float64(f), nil
+	case int32:
+		f := arg.(int32)
+		return float64(f), nil
+	case int64:
+		f := arg.(int64)
+		return float64(f), nil
+	case float32:
+		f := arg.(float32)
+		return float64(f), nil
+	case float64:
+		f := arg.(float64)
+		return f, nil
+	default:
+		return 0.0, errors.New("Invalid float")
 
-	return time.Time{}, errors.New("Invalid date")
+	}
+}
+
+var funcMap = template.FuncMap{
+	"add": func(args ...interface{}) string {
+		total := 0.0
+		for _, arg := range args {
+			f, _ := parseFloat(arg)
+			total += f
+		}
+
+		return fmt.Sprint(total)
+	},
+	"mult": func(args ...interface{}) string {
+		total := 1.0
+		for _, arg := range args {
+			f, _ := parseFloat(arg)
+			total *= f
+		}
+
+		return fmt.Sprint(total)
+	},
+	"currency": func(args ...interface{}) string {
+		arg := args[0]
+
+		input := fmt.Sprint(arg)
+
+		spl := strings.Split(input, ".")
+		intval := spl[0]
+		if len(spl) == 1 {
+			spl = append(spl, "00")
+		}
+
+		// Parse the int
+		ival, err := strconv.ParseInt(intval, 10, 64)
+		if err != nil {
+			return input
+		}
+		intval = humanize.Comma(ival)
+
+		dec := spl[1]
+		parsed, _ := strconv.ParseFloat("."+dec, 64)
+
+		var decval string
+		if parsed == 0 {
+			decval = ".00"
+		} else {
+			decval = fmt.Sprint(Round(parsed, .5, 2))[1:]
+		}
+
+		if len(decval) == 2 {
+			decval = decval + "0"
+		}
+		return "$" + intval + decval
+	},
+	"substring": func(args ...interface{}) string {
+		// First arg determines how to parse it
+		if len(args) < 2 {
+			panic("substring formatter requires one numeric argument")
+		}
+
+		arg := args[0]
+		length := args[1]
+		var strval string
+		var ok bool
+		if strval, ok = arg.(string); !ok {
+			return ""
+		}
+
+		var intval int
+		if intval, ok = length.(int); !ok {
+			return ""
+		}
+
+		if intval < 0 {
+			return strval[(len(strval) + intval):]
+		} else {
+			return strval[:intval]
+		}
+	},
+	"date": func(args ...interface{}) string {
+		if len(args) == 0 {
+			return ""
+		}
+
+		arg := args[0]
+
+		var dateval time.Time
+		var ok bool
+		if dateval, ok = arg.(time.Time); !ok {
+			return "Invalid Date"
+		}
+
+		format := "02/01/2006"
+		if len(args) >= 2 {
+			if strval, ok := args[1].(string); ok {
+				format = strval
+			}
+
+		}
+
+		return dateval.Format(format)
+	},
 }
 
 type Datum struct {
 	Source interface{}
 }
 
+// Converts the source (map or struct) to a map so that the template engine won't panic when trying to access
+// invalid properties.
+// If the src is a struct, look at the tagName to see what the map keys should be when converted to a map
+func (d *Datum) SetSource(src interface{}, tagName string) {
+	value := reflect.ValueOf(src)
+	for value.Kind() == reflect.Ptr {
+		value = value.Elem()
+	}
+	if value.Kind() == reflect.Struct {
+		converter := structs.New(src)
+		converter.TagName = tagName
+		mp := converter.Map()
+		d.Source = mp
+	} else if value.Kind() == reflect.Map {
+		d.Source = src
+	} else {
+		panic("Invalid type for emissary datum source (" + value.Kind().String() + ")")
+	}
+
+}
+
 // A getter is any type that can Get a key, with a default value and return a string
 type Getter interface {
 	Get(key string, defaultValue string) string
-}
-
-type ConditionOperator func(args []interface{}) bool
-
-func FormatConditionArguments(args []string) []interface{} {
-	formatted := make([]interface{}, len(args))
-
-	for i, a := range args {
-		// Number?
-		f, err := strconv.ParseFloat(a, 64)
-		if err == nil {
-			formatted[i] = f
-			continue
-		}
-
-		// Date?
-
-		parsedDate, err := parseDate(a)
-		if err == nil {
-			formatted[i] = parsedDate
-			continue
-		}
-
-		formatted[i] = a
-	}
-
-	return formatted
 }
 
 var ConditionOperators = map[string]ConditionOperator{
@@ -215,213 +325,17 @@ var ConditionOperators = map[string]ConditionOperator{
 }
 
 func (d *Datum) Get(key string, defaultValue string) string {
-	// Check condition blocks first
-	conditions := conditionBlock.FindAllString(key, -1)
-	// var err error
-	for _, c := range conditions {
-		key, _ = d.parseCondition(c, key)
-	}
-	// There may be compound definitions
-	matches := compoundDef.FindAllString(key, -1)
-
-	var retval string
-	if len(matches) > 0 {
-		for _, m := range matches {
-			data := strings.TrimPrefix(strings.TrimSuffix(m, "}"), "{")
-			key = strings.Replace(key, m, d.getParsedVal(data), 1)
-		}
-		retval = key
-	} else {
-		retval = d.getParsedVal(key)
-	}
-
-	if retval == "" {
-		return defaultValue
-	} else {
-		return retval
-	}
-}
-
-func (d *Datum) parseCondition(condition string, key string) (string, error) {
-	blocks := conditionPattern.FindAllString(condition, -1)
-
-	if len(blocks) < 2 {
-		return "", errors.New("Invalid conditional block")
-	}
-
-	if !strings.HasPrefix(blocks[0], "[if ") {
-		return "", errors.New("Invalid conditional block. Must open with [if")
-	}
-
-	for i, b := range blocks {
-		// Skip the last one; it's expected to be an [/if]
-		if (i + 1) == len(blocks) {
-			break
-		}
-		// Get the result
-		index := strings.Index(condition, b) + len(b)
-		nextIndex := strings.Index(condition, blocks[i+1])
-		result := condition[index:nextIndex]
-		for i := index; i < len(condition); i++ {
-			if d.evaluateBlock(b) {
-				return strings.Replace(key, condition, result, 1), nil
-			}
-		}
-	}
-
-	return "", nil
-}
-
-func (d *Datum) evaluateBlock(block string) bool {
-	if block == "[else]" {
-		return true
-	}
-
-	block = strings.TrimSuffix(block, "]")
-
-	if strings.HasPrefix(block, "[if ") {
-		block = strings.TrimPrefix(block, "[if ")
-	} else if strings.HasPrefix(block, "[else if ") {
-		block = strings.TrimPrefix(block, "[else if ")
-	} else {
-		panic("Invalid conditional block")
-	}
-
-	// Replace dynamic values with quoted values
-	dynamicValues := dynamicValue.FindAllString(block, -1)
-	for _, v := range dynamicValues {
-		block = strings.Replace(block, v, d.getParsedVal(v), 1)
-	}
-
-	parsedArgs := []string{}
-	currentArg := []byte{}
-	reader := strings.NewReader(block)
-
-	inQuote := false
-	length := reader.Len()
-	for i := 0; i < length; i++ {
-		b, _ := reader.ReadByte()
-		if b == '"' {
-			if !inQuote {
-				inQuote = true
-			} else {
-				parsedArgs = append(parsedArgs, string(currentArg))
-				currentArg = []byte{}
-				inQuote = false
-			}
-		} else if b == ' ' {
-			if inQuote {
-				currentArg = append(currentArg, b)
-			} else if len(currentArg) > 0 {
-				parsedArgs = append(parsedArgs, string(currentArg))
-				currentArg = []byte{}
-			}
-		} else {
-			currentArg = append(currentArg, b)
-		}
-	}
-	if len(currentArg) > 0 {
-		parsedArgs = append(parsedArgs, string(currentArg))
-	}
-
-	function := parsedArgs[0]
-
-	formattedArgs := FormatConditionArguments(parsedArgs[1:])
-	if f, ok := ConditionOperators[function]; ok {
-		return f(formattedArgs)
-	}
-	return false
-
-}
-
-func (d *Datum) getParsedVal(key string) string {
-	var err error
-	// Split the key by pipes to get formatting arguments, etc
-	spl := strings.Split(key, "|")
-
-	val := spl[0]
-
-	// Parse the first argument to get any math, dynamic values, etc
-
-	// Step 1) Replace any values that start with "$" with the values from the map
-	matches := dynamicValue.FindAllString(val, -1)
-
-	for _, m := range matches {
-		k := strings.TrimPrefix(m, "$")
-
-		// Ignore error because if it's an error we'll just use ""
-		v, _ := dotaccess.Get(d.Source, k)
-
-		if v == nil {
-			v = ""
-		}
-
-		parsedStr := ""
-
-		// If it's a date, spit it out in a readable format
-		if timeVal, ok := v.(time.Time); ok {
-			parsedStr = timeVal.Format(time.RFC3339Nano)
-		} else {
-			parsedStr = fmt.Sprint(v)
-		}
-		val = strings.Replace(val, m, parsedStr, 1)
-	}
-
-	// Compile. The Eval will fail if it's not all math-able. BUT, only if it's not a date AND is "mathable"
-	_, err = parseDate(val)
+	tmpl, err := template.New("tmpl").Funcs(funcMap).Parse(key)
 	if err != nil {
-		matched := mathable.MatchString(val)
-		if matched {
-			res, err := evaler.Eval(val)
-			if err == nil {
-				// Formatting will be applied later - get it as big as needed
-				val = res.FloatString(DefaultDecimalCount)
-			}
-		}
-
+		panic(err)
 	}
 
-	// Now format
-	if len(spl) > 1 {
-		format := spl[1]
-
-		args := spl[2:]
-
-		if formatter, ok := Formatters[format]; ok {
-			val, _ = formatter(val, args)
-		}
-	}
-	return val
-}
-
-func getNestedProperty(data map[string]interface{}, key string) interface{} {
-	spl := strings.Split(key, ".")
-
-	var v interface{}
-	length := len(spl)
-	for i, k := range spl {
-		v = getProperty(data, k)
-
-		if v == nil {
-			return nil
-		}
-
-		// If we're not yet at the end and don't have a map, also return nil
-		if (i + 1) < length {
-			var ok bool
-
-			if data, ok = v.(map[string]interface{}); !ok {
-				return nil
-			}
-		}
+	buf := &bytes.Buffer{}
+	err = tmpl.Execute(buf, d.Source)
+	if err != nil {
+		panic(err)
 	}
 
-	return v
-}
+	return buf.String()
 
-func getProperty(data map[string]interface{}, property string) interface{} {
-	if v, ok := data[property]; ok {
-		return v
-	}
-	return nil
 }
