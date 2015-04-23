@@ -120,7 +120,7 @@ datum.SetSource(map[string]interface{}{
 }, "")
 
 result := datum.Get("{{add .cost (mult 500 2)}}") 
-// "1500"
+// "2000"
 ```
 
 #### Full list of Mathematical Operators
