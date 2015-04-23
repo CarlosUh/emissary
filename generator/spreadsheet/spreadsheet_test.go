@@ -63,15 +63,15 @@ func TestSpreadsheet(t *testing.T) {
 			DataSource: dataSource,
 			Columns: []Column{
 				Column{
-					Value:      "$a|substring|2",
+					Value:      "{{substring .a 2}}",
 					FixedWidth: 5,
 				},
 				Column{
-					Value:      "$c + 10",
+					Value:      "{{add .c 10}}",
 					FixedWidth: 3,
 				},
 				Column{
-					Value:      "$b",
+					Value:      "{{.b}}",
 					FixedWidth: 2,
 				},
 			},
@@ -81,7 +81,7 @@ func TestSpreadsheet(t *testing.T) {
 			err := s.Generate(writer)
 			So(err, ShouldEqual, nil)
 
-			So(string(writer.data), ShouldEqual, "th,15.00000000,\"this has a , comma\"\nfo,20.00000000,bar\n")
+			So(string(writer.data), ShouldEqual, "th,15,\"this has a , comma\"\nfo,20,bar\n")
 		})
 
 		Convey("TSV", func() {
@@ -89,7 +89,7 @@ func TestSpreadsheet(t *testing.T) {
 			err := s.Generate(writer)
 			So(err, ShouldEqual, nil)
 
-			So(string(writer.data), ShouldEqual, "th\t15.00000000\tthis has a , comma\nfo\t20.00000000\tbar\n")
+			So(string(writer.data), ShouldEqual, "th\t15\tthis has a , comma\nfo\t20\tbar\n")
 		})
 
 		Convey("PSV", func() {
@@ -97,22 +97,22 @@ func TestSpreadsheet(t *testing.T) {
 			err := s.Generate(writer)
 			So(err, ShouldEqual, nil)
 
-			So(string(writer.data), ShouldEqual, "th|15.00000000|this has a , comma\nfo|20.00000000|bar\n")
+			So(string(writer.data), ShouldEqual, "th|15|this has a , comma\nfo|20|bar\n")
 		})
 
 		Convey("Fixed Width", func() {
 			s.Format = FORMAT_FIXED_WIDTH
 			err := s.Generate(writer)
 			So(err, ShouldEqual, nil)
-			So(string(writer.data), ShouldEqual, "th   15.th\nfo   20.ba\n")
+			So(string(writer.data), ShouldEqual, "th   15 th\nfo   20 ba\n")
 		})
 
 		Convey("With footer aggregations", func() {
-			s.Columns[1].Footer = "{$mean|number|2} {$median|number|0}"
+			s.Columns[1].Footer = "{{number .mean 2}} {{number .median 0}}"
 			s.ShowColumnFooters = true
 			err := s.Generate(writer)
 			So(err, ShouldEqual, nil)
-			So(string(writer.data), ShouldEqual, "th,15.00000000,\"this has a , comma\"\nfo,20.00000000,bar\n,17.50 15,\n")
+			So(string(writer.data), ShouldEqual, "th,15,\"this has a , comma\"\nfo,20,bar\n,17.50 15,\n")
 		})
 
 	})

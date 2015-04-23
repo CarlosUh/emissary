@@ -81,7 +81,7 @@ func (s *SpreadsheetGenerator) Generate(writer io.Writer) error {
 
 	for i, c := range s.Columns {
 		// If it has $sum, $mean, $median, $mode, $totalUnempty, or $totalEmpty, we need to track it so we can show it in the footer
-		if strings.Contains(c.Footer, "$mean") || strings.Contains(c.Footer, "$median") || strings.Contains(c.Footer, "$sum") || strings.Contains(c.Footer, "$mode") || strings.Contains(c.Footer, "$totalUnempty") || strings.Contains(c.Footer, "$totalEmpty") {
+		if strings.Contains(c.Footer, ".mean") || strings.Contains(c.Footer, ".median") || strings.Contains(c.Footer, ".sum") || strings.Contains(c.Footer, ".mode") || strings.Contains(c.Footer, ".totalUnempty") || strings.Contains(c.Footer, ".totalEmpty") {
 			columnsToTrack[i] = []float64{}
 		}
 	}
@@ -135,7 +135,8 @@ func (s *SpreadsheetGenerator) Generate(writer io.Writer) error {
 					TotalEmpty:   list.GetCountByValue(0.0),
 				}
 
-				datum := &data.Datum{agg}
+				datum := &data.Datum{}
+				datum.SetSource(agg, "mapTo")
 				footer[i] = datum.Get(c.Footer, "")
 
 			} else {
@@ -149,12 +150,12 @@ func (s *SpreadsheetGenerator) Generate(writer io.Writer) error {
 }
 
 type footerAggregation struct {
-	Sum          float64
-	Mean         float64
-	Median       float64
-	Mode         float64
-	TotalEmpty   int
-	TotalUnempty int
+	Sum          float64 `mapTo:"sum"`
+	Mean         float64 `mapTo:"mean"`
+	Median       float64 `mapTo:"median"`
+	Mode         float64 `mapTo:"mode"`
+	TotalEmpty   int     `mapTo:"totalEmpty"`
+	TotalUnempty int     `mapTo:"totalUnempty"`
 }
 
 func (s *SpreadsheetGenerator) writeRow(row []string) error {
